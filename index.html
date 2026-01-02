@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>彰化伸港鄉 每小時天氣預報</title>
+    <style>
+        body {
+            font-family: "Segoe UI", "微軟正黑體", sans-serif;
+            background: linear-gradient(to bottom, #e0f7fa, #ffffff);
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        h1 {
+            background: #0288d1;
+            color: white;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px 10px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #f5f5f5;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background: #fafafa;
+        }
+        .time { font-weight: bold; }
+        .temp { font-size: 1.3em; color: #d32f2f; }
+        .rain { color: #1976d2; }
+        .loading {
+            text-align: center;
+            padding: 60px;
+            font-size: 1.2em;
+            color: #555;
+        }
+        .error {
+            color: #c62828;
+            text-align: center;
+            padding: 40px;
+        }
+        .icon {
+            width: 48px;
+            height: 48px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>彰化縣伸港鄉 每小時天氣預報（24小時）</h1>
+    
+    <div id="loading" class="loading">正在載入伸港鄉最新天氣資料...</div>
+    <div id="error" class="error" style="display:none;"></div>
+    
+    <table id="weatherTable" style="display:none;">
+        <thead>
+            <tr>
+                <th>時間</th>
+                <th>天氣</th>
+                <th>溫度</th>
+                <th>體感</th>
+                <th>降雨機率</th>
+                <th>降雨量</th>
+                <th>風速</th>
+                <th>相對濕度</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<script>
+// 經緯度 - 彰化縣伸港鄉
+const lat = 24.164524;
+const lon = 120.479517;
+
+// Open-Meteo API (免費、無需key、支援台灣時區)
+const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+               `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,relative_humidity_2m,weathercode,wind_speed_10m` +
+               `&forecast_days=1&timezone=Asia%2FTaipei&windspeed_unit=kmh&precipitation_unit=mm`;
+
+fetch(apiUrl)
+    .then(response => {
+        if (!response.ok) throw new Error("網路錯誤，請稍後再試");
+        return response.json();
+    })
+    .then(data => {
+        document.getElementById("loading").style.display = "none";
+        
+        if (!data.hourly) {
+            showError("無法取得天氣資料");
+            return;
+        }
+
+        const times = data.hourly.time;
+        const temp = data.hourly.temperature_2m;
+        const appTemp = data.hourly.apparent_temperature;
+        const rainProb = data.hourly.precipitation_probability;
+        const rain = data.hourly.precipitation;
+        const humidity = data.hourly.relative_humidity_2m;
+        const wind = data.hourly.wind_speed_10m;
+        const codes = data.hourly.weathercode;
+
+        const tbody = document.getElementById("tableBody");
+        const now = new Date();
+        const currentHour = now.getHours();
+
+        // 只顯示現在到未來23小時（共24筆）
+        for (let i = currentHour; i < currentHour + 24; i++) {
+            if (i >= times.length) break;
+
+            const timeStr = times[i].slice(11,16); // 只取 HH:MM
+            const isFuture = i > currentHour;
+            const row = document.createElement("tr");
+
+            // 簡單天氣圖示對應（WMO code）
+            const weatherIcon = getWeatherIcon(codes[i]);
+
+            row.innerHTML = `
+                <td class="time">${timeStr}${isFuture ? '' : ' <small>(現在)</small>'}</td>
+                <td><img class="icon" src="${weatherIcon}" alt="天氣" title="${getWeatherDesc(codes[i])}"/></td>
+                <td class="temp">${temp[i]}°C</td>
+                <td>${Math.round(appTemp[i])}°C</td>
+                <td class="rain">${rainProb[i]}%</td>
+                <td>${rain[i] === 0 ? '-' : rain[i]+'mm'}</td>
+                <td>${wind[i]} km/h</td>
+                <td>${humidity[i]}%</td>
+            `;
+            tbody.appendChild(row);
+        }
+
+        document.getElementById("weatherTable").style.display = "table";
+    })
+    .catch(err => {
+        showError("發生錯誤：" + err.message);
+        console.error(err);
+    });
+
+function showError(msg) {
+    document.getElementById("loading").style.display = "none";
+    const errDiv = document.getElementById("error");
+    errDiv.textContent = msg;
+    errDiv.style.display = "block";
+}
+
+// WMO Weather interpretation codes → 圖示與描述（簡易版）
+function getWeatherIcon(code) {
+    const icons = {
+        0: "https://openweathermap.org/img/wn/01d@2x.png",           // 晴
+        1: "https://openweathermap.org/img/wn/02d@2x.png",           // 少雲
+        2: "https://openweathermap.org/img/wn/03d@2x.png",           // 散雲
+        3: "https://openweathermap.org/img/wn/04d@2x.png",           // 多雲
+        45: "https://openweathermap.org/img/wn/50d@2x.png",          // 霧
+        48: "https://openweathermap.org/img/wn/50d@2x.png",
+        51: "https://openweathermap.org/img/wn/09d@2x.png",          // 小雨
+        53: "https://openweathermap.org/img/wn/09d@2x.png",
+        55: "https://openweathermap.org/img/wn/09d@2x.png",
+        61: "https://openweathermap.org/img/wn/10d@2x.png",          // 雨
+        63: "https://openweathermap.org/img/wn/10d@2x.png",
+        65: "https://openweathermap.org/img/wn/10d@2x.png",
+        80: "https://openweathermap.org/img/wn/11d@2x.png",          // 陣雨
+        81: "https://openweathermap.org/img/wn/11d@2x.png",
+        82: "https://openweathermap.org/img/wn/11d@2x.png",
+        95: "https://openweathermap.org/img/wn/11d@2x.png",          // 雷雨
+    };
+    return icons[code] || "https://openweathermap.org/img/wn/03d@2x.png"; // 預設多雲
+}
+
+function getWeatherDesc(code) {
+    const desc = {
+        0: "晴天", 1: "少雲", 2: "散雲", 3: "多雲",
+        45: "霧", 48: "濃霧",
+        51: "細雨", 53: "小雨", 55: "中雨",
+        61: "雨", 63: "中雨", 65: "大雨",
+        80: "陣雨", 81: "強陣雨", 82: "暴雨",
+        95: "雷雨"
+    };
+    return desc[code] || "未知";
+}
+</script>
+</body>
+</html>
