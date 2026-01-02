@@ -197,6 +197,26 @@ function getWeatherDesc(code) {
     };
     return desc[code] || "未知";
 }
+ JavaScript// 在 fetch 成功的 .then() 最後面加這段
+setTimeout(() => {
+    location.reload();  // 整個頁面重新載入（最簡單）
+}, 60 * 60 * 1000);     // 60分鐘 = 3600000 ms
+
+// 或者更優雅：只重新抓資料，不重整整個頁面（推薦）
+function refreshWeather() {
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+            // 把原本處理資料的程式碼抽出來成函數，例如 updateTable(data)
+            updateTable(data);
+        })
+        .catch(err => console.error("自動更新失敗", err));
+}
+
+// 初次載入後，每 60 分鐘自動更新一次
+setInterval(refreshWeather, 60 * 60 * 1000);
+   
 </script>
 </body>
+
 </html>
