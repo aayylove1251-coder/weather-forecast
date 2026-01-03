@@ -1,19 +1,19 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>彰化伸港鄉 每小時天氣預報</title>
+    <title>Shengang Hourly Weather Forecast</title>
     <style>
         body {
-            font-family: "Segoe UI", "微軟正黑體", sans-serif;
+            font-family: "Segoe UI", Arial, sans-serif;
             background: linear-gradient(to bottom, #e0f7fa, #ffffff);
             margin: 0;
             padding: 20px;
             color: #333;
         }
         .container {
-            max-width: 900px;
+            max-width: 950px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -26,6 +26,7 @@
             margin: 0;
             padding: 20px;
             text-align: center;
+            font-size: 1.5rem;
         }
         table {
             width: 100%;
@@ -39,13 +40,15 @@
         th {
             background: #f5f5f5;
             font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.85rem;
         }
         tr:nth-child(even) {
             background: #fafafa;
         }
         .time { font-weight: bold; }
-        .temp { font-size: 1.3em; color: #d32f2f; }
-        .rain { color: #1976d2; }
+        .temp { font-size: 1.2em; color: #d32f2f; font-weight: bold; }
+        .rain { color: #1976d2; font-weight: bold; }
         .loading {
             text-align: center;
             padding: 60px;
@@ -67,22 +70,22 @@
 <body>
 
 <div class="container">
-    <h1>彰化縣伸港鄉 每小時天氣預報（24小時）</h1>
+    <h1>Hourly Weather Forecast - Shengang Township</h1>
     
-    <div id="loading" class="loading">正在載入伸港鄉最新天氣資料...</div>
+    <div id="loading" class="loading">Fetching latest weather data...</div>
     <div id="error" class="error" style="display:none;"></div>
     
     <table id="weatherTable" style="display:none;">
         <thead>
             <tr>
-                <th>時間</th>
-                <th>天氣</th>
-                <th>溫度</th>
-                <th>體感</th>
-                <th>降雨機率</th>
-                <th>降雨量</th>
-                <th>風速</th>
-                <th>相對濕度</th>
+                <th>Time</th>
+                <th>Condition</th>
+                <th>Temp</th>
+                <th>Feels Like</th>
+                <th>Rain Prob.</th>
+                <th>Precip.</th>
+                <th>Wind</th>
+                <th>Humidity</th>
             </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -90,71 +93,79 @@
 </div>
 
 <script>
-// 經緯度 - 彰化縣伸港鄉
+// Coordinates - Shengang Township, Changhua
 const lat = 24.164524;
 const lon = 120.479517;
 
-// Open-Meteo API (免費、無需key、支援台灣時區)
 const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
                `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,relative_humidity_2m,weathercode,wind_speed_10m` +
-               `&forecast_days=1&timezone=Asia%2FTaipei&windspeed_unit=kmh&precipitation_unit=mm`;
+               `&forecast_days=2&timezone=Asia%2FTaipei&windspeed_unit=kmh&precipitation_unit=mm`;
 
-fetch(apiUrl)
-    .then(response => {
-        if (!response.ok) throw new Error("網路錯誤，請稍後再試");
-        return response.json();
-    })
-    .then(data => {
-        document.getElementById("loading").style.display = "none";
-        
-        if (!data.hourly) {
-            showError("無法取得天氣資料");
-            return;
-        }
+function fetchWeather() {
+    fetch(apiUrl)
+        .then(response => {
+            if (!response.ok) throw new Error("Network error. Please try again later.");
+            return response.json();
+        })
+        .then(data => {
+            document.getElementById("loading").style.display = "none";
+            if (!data.hourly) {
+                showError("Could not retrieve weather data.");
+                return;
+            }
+            updateTable(data);
+            document.getElementById("weatherTable").style.display = "table";
+        })
+        .catch(err => {
+            showError("Error: " + err.message);
+            console.error(err);
+        });
+}
 
-        const times = data.hourly.time;
-        const temp = data.hourly.temperature_2m;
-        const appTemp = data.hourly.apparent_temperature;
-        const rainProb = data.hourly.precipitation_probability;
-        const rain = data.hourly.precipitation;
-        const humidity = data.hourly.relative_humidity_2m;
-        const wind = data.hourly.wind_speed_10m;
-        const codes = data.hourly.weathercode;
+function updateTable(data) {
+    const tbody = document.getElementById("tableBody");
+    tbody.innerHTML = ""; // Clear existing rows
 
-        const tbody = document.getElementById("tableBody");
-        const now = new Date();
-        const currentHour = now.getHours();
+    const times = data.hourly.time;
+    const temp = data.hourly.temperature_2m;
+    const appTemp = data.hourly.apparent_temperature;
+    const rainProb = data.hourly.precipitation_probability;
+    const rain = data.hourly.precipitation;
+    const humidity = data.hourly.relative_humidity_2m;
+    const wind = data.hourly.wind_speed_10m;
+    const codes = data.hourly.weathercode;
 
-        // 只顯示現在到未來23小時（共24筆）
-        for (let i = currentHour; i < currentHour + 24; i++) {
-            if (i >= times.length) break;
+    const now = new Date();
+    // Get current index in hourly array
+    const nowISO = now.toISOString().slice(0, 13); // "YYYY-MM-DDTHH"
+    let startIndex = times.findIndex(t => t.startsWith(nowISO));
+    if (startIndex === -1) startIndex = 0;
 
-            const timeStr = times[i].slice(11,16); // 只取 HH:MM
-            const isFuture = i > currentHour;
-            const row = document.createElement("tr");
+    // Display next 24 hours
+    for (let i = startIndex; i < startIndex + 24; i++) {
+        if (i >= times.length) break;
 
-            // 簡單天氣圖示對應（WMO code）
-            const weatherIcon = getWeatherIcon(codes[i]);
+        const dateObj = new Date(times[i]);
+        const timeStr = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const isNow = i === startIndex;
+        const row = document.createElement("tr");
 
-            row.innerHTML = `
-                <td class="time">${timeStr}${isFuture ? '' : ' <small>(現在)</small>'}</td>
-                <td><img class="icon" src="${weatherIcon}" alt="天氣" title="${getWeatherDesc(codes[i])}"/></td>
-                <td class="temp">${temp[i]}°C</td>
-                <td>${Math.round(appTemp[i])}°C</td>
-                <td class="rain">${rainProb[i]}%</td>
-                <td>${rain[i] === 0 ? '-' : rain[i]+'mm'}</td>
-                <td>${wind[i]} km/h</td>
-                <td>${humidity[i]}%</td>
-            `;
-            tbody.appendChild(row);
-        }
+        const weatherIcon = getWeatherIcon(codes[i]);
+        const weatherDesc = getWeatherDesc(codes[i]);
 
-        document.getElementById("weatherTable").style.display = "table";
-    })
-    .catch(err => {
-        showError("發生錯誤：" + err.message);
-        console.error(err);
-    });
+        row.innerHTML = `
+            <td class="time">${timeStr}${isNow ? '<br><small style="color:#0288d1">(Now)</small>' : ''}</td>
+            <td><img class="icon" src="${weatherIcon}" alt="icon" title="${weatherDesc}"/><br><small>${weatherDesc}</small></td>
+            <td class="temp">${temp[i]}°C</td>
+            <td>${Math.round(appTemp[i])}°C</td>
+            <td class="rain">${rainProb[i]}%</td>
+            <td>${rain[i] === 0 ? '-' : rain[i]+'mm'}</td>
+            <td>${wind[i]} <small>km/h</small></td>
+            <td>${humidity[i]}%</td>
+        `;
+        tbody.appendChild(row);
+    }
+}
 
 function showError(msg) {
     document.getElementById("loading").style.display = "none";
@@ -163,60 +174,46 @@ function showError(msg) {
     errDiv.style.display = "block";
 }
 
-// WMO Weather interpretation codes → 圖示與描述（簡易版）
 function getWeatherIcon(code) {
     const icons = {
-        0: "https://openweathermap.org/img/wn/01d@2x.png",           // 晴
-        1: "https://openweathermap.org/img/wn/02d@2x.png",           // 少雲
-        2: "https://openweathermap.org/img/wn/03d@2x.png",           // 散雲
-        3: "https://openweathermap.org/img/wn/04d@2x.png",           // 多雲
-        45: "https://openweathermap.org/img/wn/50d@2x.png",          // 霧
+        0: "https://openweathermap.org/img/wn/01d@2x.png",   // Clear
+        1: "https://openweathermap.org/img/wn/02d@2x.png",   // Mainly Clear
+        2: "https://openweathermap.org/img/wn/03d@2x.png",   // Partly Cloudy
+        3: "https://openweathermap.org/img/wn/04d@2x.png",   // Overcast
+        45: "https://openweathermap.org/img/wn/50d@2x.png",  // Fog
         48: "https://openweathermap.org/img/wn/50d@2x.png",
-        51: "https://openweathermap.org/img/wn/09d@2x.png",          // 小雨
+        51: "https://openweathermap.org/img/wn/09d@2x.png",  // Drizzle
         53: "https://openweathermap.org/img/wn/09d@2x.png",
         55: "https://openweathermap.org/img/wn/09d@2x.png",
-        61: "https://openweathermap.org/img/wn/10d@2x.png",          // 雨
+        61: "https://openweathermap.org/img/wn/10d@2x.png",  // Rain
         63: "https://openweathermap.org/img/wn/10d@2x.png",
         65: "https://openweathermap.org/img/wn/10d@2x.png",
-        80: "https://openweathermap.org/img/wn/11d@2x.png",          // 陣雨
-        81: "https://openweathermap.org/img/wn/11d@2x.png",
-        82: "https://openweathermap.org/img/wn/11d@2x.png",
-        95: "https://openweathermap.org/img/wn/11d@2x.png",          // 雷雨
+        80: "https://openweathermap.org/img/wn/09d@2x.png",  // Showers
+        81: "https://openweathermap.org/img/wn/09d@2x.png",
+        82: "https://openweathermap.org/img/wn/09d@2x.png",
+        95: "https://openweathermap.org/img/wn/11d@2x.png",  // Thunderstorm
     };
-    return icons[code] || "https://openweathermap.org/img/wn/03d@2x.png"; // 預設多雲
+    return icons[code] || "https://openweathermap.org/img/wn/03d@2x.png";
 }
 
 function getWeatherDesc(code) {
     const desc = {
-        0: "晴天", 1: "少雲", 2: "散雲", 3: "多雲",
-        45: "霧", 48: "濃霧",
-        51: "細雨", 53: "小雨", 55: "中雨",
-        61: "雨", 63: "中雨", 65: "大雨",
-        80: "陣雨", 81: "強陣雨", 82: "暴雨",
-        95: "雷雨"
+        0: "Clear Sky", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
+        45: "Fog", 48: "Depositing Rime Fog",
+        51: "Light Drizzle", 53: "Moderate Drizzle", 55: "Dense Drizzle",
+        61: "Slight Rain", 63: "Moderate Rain", 65: "Heavy Rain",
+        80: "Slight Showers", 81: "Moderate Showers", 82: "Violent Showers",
+        95: "Thunderstorm"
     };
-    return desc[code] || "未知";
-}
- JavaScript// 在 fetch 成功的 .then() 最後面加這段
-setTimeout(() => {
-    location.reload();  // 整個頁面重新載入（最簡單）
-}, 60 * 60 * 1000);     // 60分鐘 = 3600000 ms
-
-// 或者更優雅：只重新抓資料，不重整整個頁面（推薦）
-function refreshWeather() {
-    fetch(apiUrl)
-        .then(response => response.json())
-        .then(data => {
-            // 把原本處理資料的程式碼抽出來成函數，例如 updateTable(data)
-            updateTable(data);
-        })
-        .catch(err => console.error("自動更新失敗", err));
+    return desc[code] || "Unknown";
 }
 
-// 初次載入後，每 60 分鐘自動更新一次
-setInterval(refreshWeather, 60 * 60 * 1000);
-   
+// Initial Call
+fetchWeather();
+
+// Automatic refresh every 60 minutes
+setInterval(fetchWeather, 60 * 60 * 1000);
+
 </script>
 </body>
-
 </html>
